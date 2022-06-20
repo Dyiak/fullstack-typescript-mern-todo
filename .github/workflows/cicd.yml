@@ -1,0 +1,125 @@
+name: CI/CD pipeline
+on:
+  pull_request:
+    branches:
+      - master
+
+env:
+  AWS_REGION: eu-west-1
+
+jobs:
+  test_client:
+    name: Perform tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: 12
+
+    - name: Install client Node.js dependencies
+      working-directory: ./client
+      run: yarn install
+
+    - name: Run unit tests
+      working-directory: ./client
+      run: yarn test
+
+    - name: Run build
+      working-directory: ./client
+      run: yarn build
+
+  test_server:
+    name: Perform tests
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      contents: write
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: 14
+
+    - name: Install client Node.js dependencies
+      working-directory: ./server
+      run: yarn install
+
+    - name: Run build
+      working-directory: ./server
+      run: yarn build
+
+  ecr_client:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: test_client
+    env:
+      ECR_REPOSITORY: ${{ secrets.ECR_CLIENT_REPOSITORY }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set short sha
+      run: echo "SHORT_SHA=`git rev-parse --short HEAD`" >> $GITHUB_ENV
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build docker image
+      id: build-image
+      run: |
+        docker build -t $ECR_REPOSITORY:$SHORT_SHA .
+        docker push $ECR_REPOSITORY:$SHORT_SHA
+
+  ecr_server:
+    name: Build and Push to ECR
+    runs-on: ubuntu-latest
+    environment: dev
+    needs: test_server
+    env:
+      ECR_REPOSITORY: ${{ secrets.ECR_SERVER_REPOSITORY }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Set short sha
+      run: echo "SHORT_SHA=`git rev-parse --short HEAD`" >> $GITHUB_ENV
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build docker image
+      id: build-image
+      run: |
+        docker build -t $ECR_REPOSITORY:$SHORT_SHA .
+        docker push $ECR_REPOSITORY:$SHORT_SHA
